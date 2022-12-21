@@ -50,13 +50,24 @@ class Webmention(View):
 
         # fetch source page
         source = flask_util.get_required_param('source')
-        logger.info(f'webmention from {util.domain_from_link(source, minimize=False)}')
+        self.source_domain = util.domain_from_link(source, minimize=False)
+        logger.info(f'webmention from {self.source_domain}')
         try:
-            source_resp = util.requests_get(source, gateway=True)
+            source_resp = util.requests_get(source)
+            source_resp.raise_for_status()
         except ValueError as e:
             error(f'Bad source URL: {source}: {e}')
+        except BaseException as e:
+            status, body = util.interpret_http_exception(e)
+            if status == '410':
+                if self.try_activitypub_unfollow(source_resp.url or source):
+                    return 'OK'
+                else:
+                    error(f"410 HTTP response is only supported for unfollow; couldn't find a matching follow post to unfollow")
+            else:
+                error(f'Could not fetch source URL {source}: {e}', status=502)
+
         self.source_url = source_resp.url or source
-        self.source_domain = urllib.parse.urlparse(self.source_url).netloc.split(':')[0]
         fragment = urllib.parse.urlparse(self.source_url).fragment
         self.source_mf2 = util.parse_mf2(source_resp, id=fragment)
 
@@ -129,6 +140,7 @@ class Webmention(View):
                                 items[0].get('properties')
                             ).get('content')
 
+
                     orig_content = content(json_loads(activity.source_mf2))
                     new_content = content(self.source_mf2)
                     if orig_content and new_content and orig_content == new_content:
@@ -165,6 +177,33 @@ class Webmention(View):
             return str(error), error.status_code
         else:
             return str(error)
+
+    def try_activitypub_unfollow(self, follow_url):
+        """Attempts ActivityPub Undo Follow.
+
+        Args:
+          follow_url: str
+
+        Returns: boolean, whether we successfully unfollowed
+        """
+        logging.info(f'Attempting to undo follow {follow_url}')
+        for activity in Activity.query().filter(
+                Activity.key > Key('Response', follow_url + ' '),
+                Activity.key < Key('Response', follow_url + chr(ord(' ') + 1))):
+            if activity.status == 'complete':
+                logging.info(f'Found follow activity {activity.key}')
+                follower = Follower.get_by_id(
+                    Follower._id(activity.target(), self.source_domain))
+                if follower:
+                    logging.info(f'Deactivating existing Follower {follower.key}')
+                    follower.status = 'inactive'
+                    follower.put()
+                    STATE: construct Activity here, send AP Undo
+                    {
+                        '@context': 'https://www.w3.org/ns/activitystreams',
+                        'type': 'Undo',
+                    })
+                    return True
 
     def _activitypub_targets(self):
         """

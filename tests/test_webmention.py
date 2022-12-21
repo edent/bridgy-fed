@@ -888,6 +888,38 @@ class WebmentionTest(testutil.TestCase):
         self.assert_equals('a', followers[0].src)
         self.assert_equals('https://foo.com/about-me', followers[0].dest)
 
+    def test_activitypub_unfollow(self, mock_get, mock_post):
+        Activity.get_or_create('http://a/follow', 'https://foo.com/about-me',
+                               status='complete')
+        Follower.get_or_create('https://foo.com/about-me', 'a')
+
+        self.follow.status_code = 410
+        mock_get.side_effect = [self.follow, self.actor]
+        mock_post.return_value = requests_response('abc xyz')
+
+        got = self.client.post('/webmention', data={
+            'source': 'http://a/follow',
+            'target': 'https://fed.brid.gy/',
+        })
+        self.assertEqual(200, got.status_code)
+
+        args, kwargs = mock_post.call_args
+        self.assert_equals(('https://foo.com/inbox',), args)
+        self.assert_equals({
+            '@context': 'https://www.w3.org/ns/activitystreams',
+            'type': 'Undo',
+            'object': self.follow_as2,
+        }, json_loads(kwargs['data']))
+
+        activity = Activity.get_by_id('http://a/follow#deleted http://followee/')
+        self.assertEqual(['a'], activity.domain)
+        self.assertEqual('out', activity.direction)
+        self.assertEqual('activitypub', activity.protocol)
+        self.assertEqual('complete', activity.status)
+        self.assertIsNone(activity.source_mf2)
+
+        self.assertEqual(0, Follower.query().count())
+
     def test_activitypub_error_fragment_missing(self, mock_get, mock_post):
         mock_get.side_effect = [self.follow_fragment]
 
