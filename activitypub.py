@@ -156,11 +156,17 @@ class ActivityPub(Protocol):
         if not keyId:
             error('HTTP Signature missing keyId', status=401)
 
-        # TODO: right now, assume hs2019 is rsa-sha256 🤷
+        # TODO: right now, assume hs2019 is rsa-sha256. the real answer is...
+        # ...complicated and unclear. 🤷
         # https://github.com/snarfed/bridgy-fed/issues/430#issuecomment-1510462267
         # https://arewehs2019yet.vpzom.click/
+        # https://socialhub.activitypub.rocks/t/state-of-http-signatures/754/23
+        # https://socialhub.activitypub.rocks/t/http-signatures-libraray/2087/2
+        # https://github.com/mastodon/mastodon/pull/14556
+        headers = dict(request.headers)  # copy so we can modify
         if sig_fields.get('algorithm') == 'hs2019':
-            sig_fields['algorithm'] = 'rsa-sha256'
+            headers['Signature'] = headers['Signature'].replace(
+                'algorithm=hs2019', 'algorithm=rsa-sha256')
 
         digest = request.headers.get('Digest') or ''
         if not digest:
@@ -188,7 +194,7 @@ class ActivityPub(Protocol):
         key = key_actor.as2.get("publicKey", {}).get('publicKeyPem')
         logger.info(f'Verifying signature for {request.path} with key {key}')
         try:
-            verified = HeaderVerifier(request.headers, key,
+            verified = HeaderVerifier(headers, key,
                                       required_headers=['Digest'],
                                       method=request.method,
                                       path=request.path,
