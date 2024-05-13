@@ -252,8 +252,10 @@ def translate_object_id(*, id, from_, to):
     if from_.LABEL in COPIES_PROTOCOLS or to.LABEL in COPIES_PROTOCOLS:
         if obj := from_.load(id, remote=False):
             if copy := obj.get_copy(to):
+                util.d(f'copy {to.LABEL}:o:{from_.ABBREV}:{id}')
                 return copy
         if orig := models.get_original(id):
+            util.d(f'orig {to.LABEL}:o:{from_.ABBREV}:{id}')
             return orig.key.id()
 
     match from_.LABEL, to.LABEL:

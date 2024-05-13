@@ -126,6 +126,12 @@ class Fake(User, protocol.Protocol):
     def send(cls, obj, url, from_user=None, orig_obj=None):
         logger.info(f'{cls.__name__}.send {url} {obj.as1}')
         cls.sent.append((obj.key.id(), url))
+
+        copy_id = ids.translate_object_id(id=obj.key.id(),
+                                          from_=PROTOCOLS[obj.source_protocol],
+                                          to=cls)
+        add(obj.copies, Target(uri=copy_id, protocol=cls.LABEL))
+        obj.put()
         return True
 
     @classmethod

@@ -956,6 +956,39 @@ class ProtocolReceiveTest(TestCase):
         self.assertEqual([(obj.key.id(), 'fake:post:target')], Fake.sent)
         self.assertEqual([(obj.key.id(), 'other:eve:target')], OtherFake.sent)
 
+    def test_create_reply_is_bridged_if_original_post_is_bridged(self):
+        eve = self.make_user('fake:eve', cls=Fake, obj_id='fake:eve')
+        self.store_object(id='fake:post', source_protocol='fake',
+                          copies=[Target(protocol='other', uri='other:post')],
+                          our_as1={
+                              'objectType': 'note',
+                              'id': 'fake:post',
+                              'author': 'fake:eve',
+                          })
+        self.store_object(id='other:post', source_protocol='other',
+                          our_as1={
+                              'objectType': 'note',
+                              'id': 'other:post',
+                              'author': 'fake:eve',
+                          })
+
+        reply_as1 = {
+            'id': 'fake:reply',
+            'objectType': 'note',
+            'inReplyTo': 'fake:post',
+            'author': 'fake:user',
+        }
+        self.assertEqual(('OK', 202), Fake.receive_as1(reply_as1))
+
+        reply = self.assert_object('fake:reply', our_as1=reply_as1, type='note')
+        self.assertEqual([('fake:reply#bridgy-fed-create', 'other:post:target')],
+                         OtherFake.sent)
+
+        create = Object.get_by_id('fake:reply#bridgy-fed-create')
+        STATE https://github.com/snarfed/bridgy-fed/issues/1038\\\
+        big problem is we're setting copies on the #create, not on the original object
+        self.assertEqual([Target(protocol='other', uri='other:post')], create.copies)
+
     def test_create_reply_isnt_bridged_if_original_isnt_bridged(self):
         eve = self.make_user('other:eve', cls=OtherFake, obj_id='other:eve')
         Follower.get_or_create(to=self.user, from_=eve)
