@@ -523,13 +523,13 @@ class ATProto(User, Protocol):
 
         # find user
         from_cls = PROTOCOLS[obj.source_protocol]
-        from_key = from_cls.actor_key(obj)
+        from_key = from_cls.actor_key(obj, allow_opt_out=True)
         if not from_key:
             logger.info(f"Couldn't find {obj.source_protocol} user for {obj.key.id()}")
             return False
 
         # load user
-        user = from_cls.get_or_create(from_key.id(), propagate=True)
+        user = from_cls.get_or_create(from_key.id(), allow_opt_out=True, propagate=True)
         did = user.get_copy(ATProto)
         assert did
         logger.info(f'{user.key.id()} is {did}')
